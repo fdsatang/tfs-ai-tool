@@ -6,7 +6,7 @@ const useAIMark = () => {
 
   const tag = {
     bug: "AI-BUG-FIX",
-    coding: "AI-CODING",
+    coding: "AI-CODING-PLUS",
     check: "AI-PR-CHECK"
   };
 

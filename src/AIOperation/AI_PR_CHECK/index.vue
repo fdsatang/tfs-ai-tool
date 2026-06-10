@@ -81,6 +81,11 @@ const aiPrCheck = () => {
         retryCount = 0;
       } else {
         addLog(`检查请求失败！<br>状态码: ${response.status}<br>错误信息: ${response.responseText}`, "error", true);
+        // 检测是否因缺少关联工作项而失败
+        if (response.responseText && response.responseText.includes("没有关联工作项")) {
+          failedDueToNoWorkItem = true;
+          addLog(`请在 PR 中关联工作项后，将自动重新检查`, "warn");
+        }
       }
       clearInterval(timer);
       loading.value = false;
@@ -116,19 +121,24 @@ const aiPrCheck = () => {
 };
 
 let checkDomTimer: number | null = null;
+let workItemObserver: MutationObserver | null = null;
+// 是否因缺少关联工作项而失败
+let failedDueToNoWorkItem = false;
 // 选择器常量
 const TARGET_SELECTOR = ".vc-pullrequest-review-title-component .description-row .right-group .vc-pullrequest-action-bar";
+// TFS PR 页面工作项区域选择器
+const WORK_ITEM_SELECTOR = ".vc-pullrequest-work-items";
 
 onMounted(() => {
   let attemptCount = 0;
-  const MAX_ATTEMPTS = 2; // 最多尝试 2 次
+  const MAX_ATTEMPTS = 10; // SPA 路由切换后 DOM 可能需要更长时间渲染，增加重试次数
 
   const tryMountComponent = () => {
     attemptCount++;
     const rightGroupDom = document.querySelector<HTMLElement>(TARGET_SELECTOR);
 
-    // 找到 DOM 就挂载
-    if (rightGroupDom) {
+    // 找到 DOM 就挂载（但先检查按钮是否已存在，防止重复）
+    if (rightGroupDom && !rightGroupDom.querySelector(".ai-pr-check-btn")) {
       createInstanceWrap(
         rightGroupDom,
         PullRequest,
@@ -138,15 +148,16 @@ onMounted(() => {
         },
         true
       );
+      // 挂载成功后，监听工作项区域变化
+      watchWorkItemChanges();
       return;
     }
 
-    // 没找到 && 没超过次数 → 再试一次
+    // 没找到 && 没超过次数 → 继续重试
     if (attemptCount < MAX_ATTEMPTS) {
       checkDomTimer = window.setTimeout(tryMountComponent, 500);
     } else {
-      // 两次都失败，放弃
-      console.warn("[PR] 两次尝试均未找到DOM，停止加载");
+      console.warn("[PR] 多次尝试均未找到DOM，停止加载");
     }
   };
 
@@ -154,11 +165,39 @@ onMounted(() => {
   tryMountComponent();
 });
 
-// 销毁时清除定时器，避免内存泄漏
+// 监听工作项区域 DOM 变化，当用户关联工作项后自动重新检查
+const watchWorkItemChanges = () => {
+  const workItemArea = document.querySelector(WORK_ITEM_SELECTOR);
+  if (!workItemArea) return;
+
+  workItemObserver = new MutationObserver((mutations) => {
+    // 只在因缺少工作项失败后才自动重试
+    if (!failedDueToNoWorkItem) return;
+
+    // 检测到工作项区域有新增节点（用户关联了工作项）
+    const hasAddedNodes = mutations.some(
+      (m) => m.addedNodes.length > 0
+    );
+    if (hasAddedNodes) {
+      addLog(`检测到工作项变更，自动重新检查...`, "success");
+      failedDueToNoWorkItem = false;
+      // 延迟1秒，等 TFS 保存完成
+      setTimeout(() => aiPrCheck(), 1000);
+    }
+  });
+
+  workItemObserver.observe(workItemArea, { childList: true, subtree: true });
+};
+
+// 销毁时清除定时器和观察器，避免内存泄漏
 onUnmounted(() => {
   if (checkDomTimer) {
     clearTimeout(checkDomTimer);
     checkDomTimer = null;
+  }
+  if (workItemObserver) {
+    workItemObserver.disconnect();
+    workItemObserver = null;
   }
 });
 </script>

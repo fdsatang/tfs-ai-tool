@@ -1,7 +1,7 @@
 <template>
   <div class="tfs-tags-btn-box" :class="{ fullScreen: fullScreen }">
     <div class="tfs-tags-btn" @click.stop="aiMark('bug')">AI-BUG-FIX</div>
-    <div class="tfs-tags-btn success" @click.stop="aiMark('coding')">AI-CODING</div>
+    <div class="tfs-tags-btn success" @click.stop="aiMark('coding')">AI-CODING-PLUS</div>
     <div class="tfs-tags-btn blue" @click.stop="aiMark('check')">AI-PR-CHECK</div>
     <div class="tfs-tags-btn info" @click.stop="showPanel = !showPanel">{{ pat ? "更新TFS令牌" : "配置TFS令牌" }}</div>
   </div>
